@@ -6,13 +6,23 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
+# Wichtig: Schreibrechte für den GITHUB_TOKEN, sonst scheitert git push (exit 128)
+permissions:
+  contents: write
+
 jobs:
   update-weather:
     runs-on: ubuntu-latest
 
+    # Optional: schon jetzt Node.js 24 erzwingen (entfernt die Node20-Warnung)
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Fetch weather from Open-Meteo
         run: |
@@ -24,27 +34,32 @@ jobs:
           import json
           from datetime import datetime
 
-          with open("weather_raw.json") as f:
+          with open("weather_raw.json", "r", encoding="utf-8") as f:
               data = json.load(f)
 
           now_hour = datetime.now().hour
 
           result = {
               "sunrise": data["daily"]["sunrise"][0],
-              "sunset": data["daily"]["sunset"][0],
-              "cloud": data["hourly"]["cloudcover"][now_hour],
-              "pop": data["hourly"]["precipitation_probability"][now_hour],
-              "ww": data["current_weather"]["weathercode"]
+              "sunset":  data["daily"]["sunset"][0],
+              "cloud":   data["hourly"]["cloudcover"][now_hour],
+              "pop":     data["hourly"]["precipitation_probability"][now_hour],
+              "ww":      data["current_weather"]["weathercode"]
           }
 
-          with open("kitzingen.json", "w") as f:
+          with open("kitzingen.json", "w", encoding="utf-8") as f:
               json.dump(result, f, indent=2)
           EOF
 
       - name: Commit and push if changed
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
           git add kitzingen.json
-          git commit -m "auto update weather" || exit 0
+
+          # Wenn keine Änderung: sauber beenden (kein Fehler)
+          git diff --cached --quiet && exit 0
+
+          git commit -m "auto update weather"
           git push
